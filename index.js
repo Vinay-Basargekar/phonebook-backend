@@ -46,11 +46,11 @@ app.get("/info", (request, response) => {
 	`);
 });
 
-app.get("/persons", (request, response) => {
+app.get("/api/persons", (request, response) => {
 	response.json(phoneBook);
 });
 
-app.get("/persons/:id", (request, response) => {
+app.get("/api/persons/:id", (request, response) => {
 	const id = request.params.id;
 	const person = phoneBook.find((p) => p.id === id);
 
@@ -61,14 +61,14 @@ app.get("/persons/:id", (request, response) => {
 	}
 });
 
-app.delete("/persons/:id", (request, response) => {
+app.delete("/api/persons/:id", (request, response) => {
 	const id = request.params.id;
 	phoneBook = phoneBook.filter((person) => person.id !== id);
 
 	response.status(204).end();
 });
 
-app.post("/persons", (request, response) => {
+app.post("/api/persons", (request, response) => {
 	const body = request.body;
 
 	if (!body.name || !body.number) {
@@ -84,7 +84,7 @@ app.post("/persons", (request, response) => {
 	}
 
 	const newPerson = {
-		id: Math.floor(Math.random() * 10000).toString(), 
+		id: Math.floor(Math.random() * 10000).toString(),
 		name: body.name,
 		number: body.number,
 	};
