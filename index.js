@@ -1,74 +1,83 @@
 const express = require("express");
 const cors = require("cors");
+const Person = require("./models/person");
 
 const app = express();
 
+// Middleware
 app.use(cors());
-app.use(express.static("dist"));
-
-// Middleware to parse JSON bodies
 app.use(express.json());
+app.use(express.static("dist")); // Serve frontend
 
-let phoneBook = [
-	{
-		id: "1",
-		name: "Arto Hellas",
-		number: "040-123456",
-	},
-	{
-		id: "2",
-		name: "Ada Lovelace",
-		number: "39-44-5323523",
-	},
-	{
-		id: "3",
-		name: "Dan Abramov",
-		number: "12-43-234345",
-	},
-	{
-		id: "4",
-		name: "Mary Poppendieck",
-		number: "39-23-6423122",
-	},
-];
-
-app.get("/", (request, response) => {
-	response.send("<h1>Hello World!</h1>");
-});
-
+// Info Route: Displays number of entries and request time
 app.get("/info", (request, response) => {
 	const requestTime = new Date();
-	const numOfEntries = phoneBook.length;
-
-	response.send(`
-		<p>Phonebook has info for ${numOfEntries} people</p>
-		<p>${requestTime}</p>
-	`);
+	Person.countDocuments({})
+		.then((count) => {
+			response.send(`
+				<p>Phonebook has info for ${count} people</p>
+				<p>${requestTime}</p>
+			`);
+		})
+		.catch((error) => response.status(500).send(error.message));
 });
 
+// Get all persons from the database
 app.get("/api/persons", (request, response) => {
-	response.json(phoneBook);
+	Person.find({}).then((persons) => {
+		response.json(persons);
+	});
 });
 
-app.get("/api/persons/:id", (request, response) => {
-	const id = request.params.id;
-	const person = phoneBook.find((p) => p.id === id);
-
-	if (person) {
-		response.json(person);
-	} else {
-		response.status(404).end();
-	}
+// Get a single person by ID from the database
+app.get("/api/persons/:id", (request, response, next) => {
+	Person.findById(request.params.id)
+		.then((person) => {
+			if (person) {
+				response.json(person);
+			} else {
+				response.status(404).end();
+			}
+		})
+		.catch((error) => next(error)); // Handle invalid ID or errors
 });
 
-app.delete("/api/persons/:id", (request, response) => {
-	const id = request.params.id;
-	phoneBook = phoneBook.filter((person) => person.id !== id);
-
-	response.status(204).end();
+// Delete a person by ID from the database
+app.delete("/api/persons/:id", (request, response, next) => {
+	Person.findByIdAndDelete(request.params.id)
+		.then((result) => {
+			if (result) {
+				response.status(204).end();
+			} else {
+				response.status(404).end();
+			}
+		})
+		.catch((error) => next(error));
 });
 
-app.post("/api/persons", (request, response) => {
+// Update a person by ID (PUT request)
+app.put("/api/persons/:id", (request, response, next) => {
+	const { name, number } = request.body;
+
+	const updatedPerson = { name, number };
+
+	Person.findByIdAndUpdate(request.params.id, updatedPerson, {
+		new: true,
+		runValidators: true,
+		context: "query",
+	})
+		.then((updatedPerson) => {
+			if (updatedPerson) {
+				response.json(updatedPerson);
+			} else {
+				response.status(404).send({ error: "Person not found" });
+			}
+		})
+		.catch((error) => next(error));
+});
+
+// Create a new person
+app.post("/api/persons", (request, response, next) => {
 	const body = request.body;
 
 	if (!body.name || !body.number) {
@@ -77,23 +86,45 @@ app.post("/api/persons", (request, response) => {
 		});
 	}
 
-	if (phoneBook.some((person) => person.name === body.name)) {
-		return response.status(400).json({
-			error: "name must be unique",
+	Person.findOne({ name: body.name }).then((existingPerson) => {
+		if (existingPerson) {
+			return response.status(400).json({ error: "name must be unique" });
+		}
+
+		// Create a new person instance
+		const newPerson = new Person({
+			name: body.name,
+			number: body.number,
 		});
-	}
 
-	const newPerson = {
-		id: Math.floor(Math.random() * 10000).toString(),
-		name: body.name,
-		number: body.number,
-	};
-
-	phoneBook = phoneBook.concat(newPerson);
-	response.json(newPerson);
+		// Save to database
+		newPerson
+			.save()
+			.then((savedPerson) => {
+				response.json(savedPerson);
+			})
+			.catch((error) => next(error)); // Handle errors
+	});
 });
 
-const PORT = process.env.PORT || 3001;
+// Handle unknown routes
+app.use((request, response) => {
+	response.status(404).send({ error: "unknown endpoint" });
+});
+
+// Error handling middleware
+app.use((error, request, response, next) => {
+	console.error(error.message);
+
+	if (error.name === "CastError" && error.kind === "ObjectId") {
+		return response.status(400).send({ error: "malformatted id" });
+	}
+
+	next(error);
+});
+
+// Start the server
+const PORT = process.env.PORT || 3001; 
 app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
 });
